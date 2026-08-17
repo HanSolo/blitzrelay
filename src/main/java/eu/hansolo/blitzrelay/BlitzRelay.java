@@ -112,7 +112,10 @@ public class BlitzRelay {
                           final byte[] bytes = new byte[data.remaining()];
                           data.get(bytes);
                           try {
-                              handleMessage(new String(Helper.lzwDecode(bytes), StandardCharsets.UTF_8));
+                              // Convert bytes to String first and then decode
+                              final String raw     = new String(bytes, StandardCharsets.UTF_8);
+                              final String decoded = Helper.lzwDecode(raw).trim();
+                              if (decoded.startsWith("{")) { processJson(decoded); }
                           } catch (final Exception e) {
                               LOGGER.warn("Binary decode error: {}", e.getMessage());
                           }
