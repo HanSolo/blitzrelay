@@ -125,22 +125,9 @@ public class BlitzRelay {
     }
 
     private static void handleRawBytes(final byte[] bytes) {
-        // Log first 20 raw byte values
-        final StringBuilder sb = new StringBuilder("Raw bytes: ");
-        for (int i = 0; i < Math.min(20, bytes.length); i++) {
-            sb.append(bytes[i] & 0xFF).append(" ");
-        }
-        LOGGER.debug(sb.toString());
-
         try {
             final String decoded = Helper.lzwDecode(bytes);
-            // Log first 20 decoded char values
-            final StringBuilder sb2 = new StringBuilder("Decoded chars: ");
-            for (int i = 0; i < Math.min(20, decoded.length()); i++) {
-                sb2.append((int) decoded.charAt(i)).append(" ");
-            }
-            LOGGER.debug(sb2.toString());
-
+            LOGGER.debug("Full decoded: {}", decoded);
             if (decoded.startsWith("{")) { processJson(decoded); }
         } catch (final Exception e) {
             LOGGER.debug("Decode error: {}", e.getMessage());
