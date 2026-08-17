@@ -143,13 +143,11 @@ public class BlitzRelay {
 
     private static void handleMessage(final String raw) {
         if (raw == null || raw.isBlank()) { return; }
-        LOGGER.debug("Raw msg length: {} first byte: {}", raw.length(), (int) raw.charAt(0));
         try {
-            final String json = raw.trim().startsWith("{") ? raw.trim() : new String(Helper.lzwDecode(raw.getBytes(StandardCharsets.ISO_8859_1)), StandardCharsets.UTF_8).trim();
-            LOGGER.debug("Decoded: {}", json.length() > 100 ? json.substring(0, 100) : json);
+            final String json = raw.trim().startsWith("{") ? raw.trim() : Helper.lzwDecode(raw).trim();
             if (json.startsWith("{")) { processJson(json); }
         } catch (final Exception e) {
-            LOGGER.warn("Decode error: {}", e.getMessage());
+            LOGGER.debug("Decode error: {}", e.getMessage());
         }
     }
 
