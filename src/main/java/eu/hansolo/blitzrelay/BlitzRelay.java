@@ -144,11 +144,16 @@ public class BlitzRelay {
     }
 
     private static void processJson(final String json) {
-        LOGGER.debug("Processing JSON: {}", json.length() > 100 ? json.substring(0, 100) : json);
-        if (json.contains("\"lat\"") && json.contains("\"lon\"") && json.contains("\"time\"")) {
+        // Log decoded string as codepoints to see what we actually have
+        if (LOGGER.isDebugEnabled()) {
+            final StringBuilder sb = new StringBuilder("Decoded codepoints: ");
+            for (int i = 0; i < Math.min(30, json.length()); i++) {
+                sb.append((int) json.charAt(i)).append(" ");
+            }
+            LOGGER.debug(sb.toString());
+        }
+        if (json.contains("lat") && json.contains("lon") && json.contains("time")) {
             publishStrike(json);
-        } else {
-            LOGGER.debug("JSON filtered out — missing lat/lon/time: {}", json.substring(0, Math.min(80, json.length())));
         }
     }
 
