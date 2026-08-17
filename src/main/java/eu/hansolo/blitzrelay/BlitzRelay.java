@@ -6,13 +6,12 @@ import com.hivemq.client.mqtt.mqtt3.Mqtt3AsyncClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import org.java_websocket.client.WebSocketClient;
+import org.java_websocket.handshake.ServerHandshake;
+
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.WebSocket;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -69,84 +68,68 @@ public class BlitzRelay {
             LOGGER.info("Connecting to Blitzortung: {}", server);
 
             try {
-                connectBlitzortung(server);
+                final Object lock          = new Object();
+                final AtomicBoolean closed = new AtomicBoolean(false);
+
+                final WebSocketClient ws = new WebSocketClient(URI.create(server)) {
+
+                    @Override public void onOpen(final ServerHandshake handshake) {
+                        LOGGER.info("WebSocket opened: {}", server);
+                        send("{\"a\": 111}");
+                    }
+
+                    @Override public void onMessage(final String message) {
+                        // Should not be called, we override onMessage(ByteBuffer)
+                        // but just in case, handle it too
+                        handleRawBytes(message.getBytes(StandardCharsets.ISO_8859_1));
+                    }
+
+                    @Override public void onMessage(final java.nio.ByteBuffer bytes) {
+                        // Raw bytes, no UTF-8 decoding, exactly what we need
+                        final byte[] arr = new byte[bytes.remaining()];
+                        bytes.get(arr);
+                        handleRawBytes(arr);
+                    }
+
+                    @Override public void onClose(final int code, final String reason, final boolean remote) {
+                        LOGGER.info("WebSocket closed: {} {}", code, reason);
+                        closed.set(true);
+                        synchronized (lock) { lock.notifyAll(); }
+                    }
+
+                    @Override public void onError(final Exception e) {
+                        LOGGER.warn("WebSocket error: {}", e.getMessage());
+                        closed.set(true);
+                        synchronized (lock) { lock.notifyAll(); }
+                    }
+                };
+
+                ws.connect();
+
+                // Wait until closed
+                synchronized (lock) {
+                    while (!closed.get()) { lock.wait(30_000); }
+                }
+
                 backoffMs = Constants.INITIAL_BACKOFF_MS;
+
             } catch (final Exception e) {
-                LOGGER.warn("Connection error {}", e);
+                LOGGER.warn("Connection error: {}", e.getMessage());
             }
 
             currentServerIndex++;
-            LOGGER.info("Reconnecting in {} ms...", backoffMs);
+            LOGGER.info("Reconnecting in {}ms…", backoffMs);
             Thread.sleep(backoffMs);
             backoffMs = Math.min(backoffMs * 2, Constants.MAX_BACKOFF_MS);
         }
     }
 
-    private static void connectBlitzortung(final String serverUrl) throws Exception {
-        final AtomicBoolean sessionActive = new AtomicBoolean(true);
-        final Object        lock          = new Object();
-
-        HttpClient.newHttpClient()
-                  .newWebSocketBuilder()
-                  .buildAsync(URI.create(serverUrl), new WebSocket.Listener() {
-
-                      private final StringBuilder buffer = new StringBuilder();
-
-                      @Override public void onOpen(final WebSocket ws) {
-                          LOGGER.info("WebSocket opened: {}", serverUrl);
-                          ws.sendText("{\"a\": 111}", true);
-                          ws.request(1);
-                      }
-
-                      @Override public CompletionStage<?> onText(final WebSocket ws, final CharSequence data, final boolean last) {
-                          buffer.append(data);
-                          if (last) {
-                              final String raw = buffer.toString();
-                              buffer.setLength(0);
-                              handleMessage(raw);
-                          }
-                          ws.request(1);
-                          return null;
-                      }
-
-                      @Override public CompletionStage<?> onBinary(final WebSocket ws, final ByteBuffer data, final boolean last) {
-                          final byte[] bytes = new byte[data.remaining()];
-                          data.get(bytes);
-                          try {
-                              handleMessage(new String(bytes, StandardCharsets.UTF_8));
-                          } catch (final Exception e) {
-                              LOGGER.warn("Binary decode error: {}", e.getMessage());
-                          }
-                          ws.request(1);
-                          return null;
-                      }
-
-                      @Override public CompletionStage<?> onClose(final WebSocket ws, final int statusCode, final String reason) {
-                          LOGGER.info("WebSocket closed: {} {}", statusCode, reason);
-                          sessionActive.set(false);
-                          synchronized (lock) { lock.notifyAll(); }
-                          return null;
-                      }
-
-                      @Override public void onError(final WebSocket ws, final Throwable error) {
-                          LOGGER.warn("WebSocket error: {}", error.getMessage());
-                          sessionActive.set(false);
-                          synchronized (lock) { lock.notifyAll(); }
-                      }
-                  })
-                  .get(10, TimeUnit.SECONDS);
-
-        synchronized (lock) {
-            while (sessionActive.get()) { lock.wait(30_000); }
-        }
-    }
-
-
-    private static void handleMessage(final String raw) {
-        if (raw == null || raw.isBlank()) { return; }
+    private static void handleRawBytes(final byte[] bytes) {
         try {
-            final String json = raw.trim().startsWith("{") ? raw.trim() : Helper.lzwDecode(raw).trim();
-            if (json.startsWith("{")) { processJson(json); }
+            final String decoded = Helper.lzwDecode(bytes);
+            if (decoded.startsWith("{")) {
+                processJson(decoded);
+            }
         } catch (final Exception e) {
             LOGGER.debug("Decode error: {}", e.getMessage());
         }
