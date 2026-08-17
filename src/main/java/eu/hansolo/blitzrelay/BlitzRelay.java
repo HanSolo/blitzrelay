@@ -143,17 +143,22 @@ public class BlitzRelay {
 
     private static void handleMessage(final String raw) {
         if (raw == null || raw.isBlank()) { return; }
+        LOGGER.debug("Raw msg length: {} first byte: {}", raw.length(), (int) raw.charAt(0));
         try {
             final String json = raw.trim().startsWith("{") ? raw.trim() : new String(Helper.lzwDecode(raw.getBytes(StandardCharsets.ISO_8859_1)), StandardCharsets.UTF_8).trim();
+            LOGGER.debug("Decoded: {}", json.length() > 100 ? json.substring(0, 100) : json);
             if (json.startsWith("{")) { processJson(json); }
         } catch (final Exception e) {
-            LOGGER.error("Decode error: {}", e.getMessage());
+            LOGGER.warn("Decode error: {}", e.getMessage());
         }
     }
 
     private static void processJson(final String json) {
+        LOGGER.debug("Processing JSON: {}", json.length() > 100 ? json.substring(0, 100) : json);
         if (json.contains("\"lat\"") && json.contains("\"lon\"") && json.contains("\"time\"")) {
             publishStrike(json);
+        } else {
+            LOGGER.debug("JSON filtered out — missing lat/lon/time: {}", json.substring(0, Math.min(80, json.length())));
         }
     }
 
