@@ -27,7 +27,7 @@ public final class Helper {
         for (int i = 0; i < b.length; i++) { d[i] = (char)(b[i] & 0xFF); }
 
         final Map<Integer, String> e = new HashMap<>();
-        int                        h = 256;
+        int                        h = 64;
         int                        o = h;
         String                     c = String.valueOf(d[0]);
         String                     f = c;
