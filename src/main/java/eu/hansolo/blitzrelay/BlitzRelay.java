@@ -84,9 +84,11 @@ public class BlitzRelay {
         options.setAutomaticReconnect(true);
         options.setCleanSession(true);
 
+        // Use in-memory persistence — no file system access needed
         mqttClient = new MqttClient(
         "tcp://" + MQTT_HOST + ":" + MQTT_PORT,
-        "blitzrelay-" + UUID.randomUUID().toString().substring(0, 8)
+        "blitzrelay-" + UUID.randomUUID().toString().substring(0, 8),
+        new org.eclipse.paho.client.mqttv3.persist.MemoryPersistence()
         );
         mqttClient.connect(options);
         log.info("MQTT connected to {}:{}", MQTT_HOST, MQTT_PORT);
