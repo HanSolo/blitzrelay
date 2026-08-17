@@ -101,8 +101,9 @@ public class BlitzRelay {
                       @Override public CompletionStage<?> onText(final WebSocket ws, final CharSequence data, final boolean last) {
                           buffer.append(data);
                           if (last) {
-                              handleMessage(buffer.toString());
+                              final String raw = buffer.toString();
                               buffer.setLength(0);
+                              handleMessage(raw);
                           }
                           ws.request(1);
                           return null;
@@ -112,10 +113,7 @@ public class BlitzRelay {
                           final byte[] bytes = new byte[data.remaining()];
                           data.get(bytes);
                           try {
-                              // Convert bytes to String first and then decode
-                              final String raw     = new String(bytes, StandardCharsets.UTF_8);
-                              final String decoded = Helper.lzwDecode(raw).trim();
-                              if (decoded.startsWith("{")) { processJson(decoded); }
+                              handleMessage(new String(bytes, StandardCharsets.UTF_8));
                           } catch (final Exception e) {
                               LOGGER.warn("Binary decode error: {}", e.getMessage());
                           }
@@ -155,7 +153,6 @@ public class BlitzRelay {
     }
 
     private static void processJson(final String json) {
-        LOGGER.debug("Processing JSON: {}", json.length() > 100 ? json.substring(0, 100) : json);
         if (json.contains("\"lat\"") && json.contains("\"lon\"") && json.contains("\"time\"")) {
             publishStrike(json);
         } else {
