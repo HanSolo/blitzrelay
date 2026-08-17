@@ -10,6 +10,7 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -68,7 +69,7 @@ public class BlitzRelay {
             LOGGER.info("Connecting to Blitzortung: {}", server);
 
             try {
-                final Object lock          = new Object();
+                final Object        lock   = new Object();
                 final AtomicBoolean closed = new AtomicBoolean(false);
 
                 final WebSocketClient ws = new WebSocketClient(URI.create(server)) {
@@ -79,16 +80,15 @@ public class BlitzRelay {
                     }
 
                     @Override public void onMessage(final String message) {
-                        // Should not be called, we override onMessage(ByteBuffer)
-                        // but just in case, handle it too
-                        handleRawBytes(message.getBytes(StandardCharsets.ISO_8859_1));
+                        // Text frame, pass String directly, same as Python websockets library
+                        handleMessage(message);
                     }
 
-                    @Override public void onMessage(final java.nio.ByteBuffer bytes) {
-                        // Raw bytes, no UTF-8 decoding, exactly what we need
+                    @Override public void onMessage(final ByteBuffer bytes) {
+                        // Binary frame, decode as UTF-8 String first
                         final byte[] arr = new byte[bytes.remaining()];
                         bytes.get(arr);
-                        handleRawBytes(arr);
+                        handleMessage(new String(arr, StandardCharsets.UTF_8));
                     }
 
                     @Override public void onClose(final int code, final String reason, final boolean remote) {
@@ -106,7 +106,6 @@ public class BlitzRelay {
 
                 ws.connect();
 
-                // Wait until closed
                 synchronized (lock) {
                     while (!closed.get()) { lock.wait(30_000); }
                 }
@@ -114,7 +113,7 @@ public class BlitzRelay {
                 backoffMs = Constants.INITIAL_BACKOFF_MS;
 
             } catch (final Exception e) {
-                LOGGER.warn("Connection error: {}", e.getMessage());
+               LOGGER.warn("Connection error: {}", e.getMessage());
             }
 
             currentServerIndex++;
@@ -124,17 +123,28 @@ public class BlitzRelay {
         }
     }
 
-    private static void handleRawBytes(final byte[] bytes) {
+    private static void handleMessage(final String raw) {
+        if (raw == null || raw.isBlank()) { return; }
+
+        // Log first 20 char code points to diagnose encoding
+        if (LOGGER.isDebugEnabled()) {
+            final StringBuilder sb = new StringBuilder("String codepoints: ");
+            for (int i = 0; i < Math.min(20, raw.length()); i++) {
+                sb.append((int) raw.charAt(i)).append(" ");
+            }
+            LOGGER.debug(sb.toString());
+        }
+
         try {
-            final String decoded = Helper.lzwDecode(bytes);
-            LOGGER.debug("Full decoded: {}", decoded);
-            if (decoded.startsWith("{")) { processJson(decoded); }
+            final String json = raw.trim().startsWith("{") ? raw.trim() : Helper.lzwDecode(raw).trim();
+            if (json.startsWith("{")) { processJson(json); }
         } catch (final Exception e) {
             LOGGER.debug("Decode error: {}", e.getMessage());
         }
     }
 
     private static void processJson(final String json) {
+        LOGGER.debug("Processing JSON: {}", json.length() > 100 ? json.substring(0, 100) : json);
         if (json.contains("\"lat\"") && json.contains("\"lon\"") && json.contains("\"time\"")) {
             publishStrike(json);
         } else {
