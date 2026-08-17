@@ -10,56 +10,37 @@ import java.util.Map;
 public final class Helper {
 
     public static String lzwDecode(final String raw) {
-        if (raw == null || raw.isEmpty()) { return ""; }
+        // The reference implementation takes bytes and calls b.decode()
+        // Java's WebSocket decoded the bytes as UTF-8, but they were Latin-1
+        // Re-encode to ISO-8859-1 to get the original bytes back
+        final byte[] bytes = raw.getBytes(StandardCharsets.ISO_8859_1);
 
-        final Map<Integer, String> dict     = new HashMap<>();
-        int                        nextCode = 256;   // h in Python
-        String                     c        = String.valueOf(raw.charAt(0));
-        String                     f        = c;
-        final List<String>         out      = new ArrayList<>();
-        out.add(c);
+        final Map<Integer, String> e = new HashMap<>();
+        int                        h = 256;
+        int                        o = h;
 
-        for (int i = 1; i < raw.length(); i++) {
-            final int    code = (int) raw.charAt(i);   // ord(d[i]) in Python
+        // d = list(b.decode()), work with the bytes as Latin-1 chars
+        String                     c = String.valueOf((char)(bytes[0] & 0xFF));
+        String                     f = c;
+        final List<String>         g = new ArrayList<>();
+        g.add(c);
+
+        for (int i = 1; i < bytes.length; i++) {
+            final int    a_int = bytes[i] & 0xFF;   // ord(d[i])
             final String a;
-            if (code < nextCode && code >= 256) {
-                // Dictionary entry, code is above ASCII range
-                a = dict.containsKey(code) ? dict.get(code) : f + c;
-            } else if (code < 256) {
-                // Literal character
-                a = String.valueOf(raw.charAt(i));
+            if (h > a_int) {
+                a = String.valueOf((char) a_int);    // d[i] if h > a
+            } else if (e.containsKey(a_int)) {
+                a = e.get(a_int);                    // e[a] if e.get(a)
             } else {
-                // Fallback
-                a = f + c;
+                a = f + c;                           // f + c
             }
-            out.add(a);
-            c = String.valueOf(a.charAt(0));
-            dict.put(nextCode++, f + c);
+            g.add(a);
+            c = String.valueOf(a.charAt(0));         // c = a[0]
+            e.put(o, f + c);                         // e[o] = f + c
+            o++;
             f = a;
         }
-        return String.join("", out);
-    }
-
-    public static String lzwDecodeBytes(final byte[] input) {
-        if (input == null || input.length == 0) { return ""; }
-
-        final Map<Integer, String> dictionary = new HashMap<>();
-        int                        nextCode   = 256;
-
-        // Work with unsigned byte values 0-255, matching Python's ord()
-        String c   = String.valueOf((char)(input[0] & 0xFF));
-        String f   = c;
-        final List<String> out = new ArrayList<>();
-        out.add(c);
-
-        for (int i = 1; i < input.length; i++) {
-            final int    code = input[i] & 0xFF;
-            final String a    = (code < 256) ? String.valueOf((char) code) : dictionary.containsKey(code) ? dictionary.get(code) : f + c;
-            out.add(a);
-            c = String.valueOf(a.charAt(0));
-            dictionary.put(nextCode++, f + c);
-            f = a;
-        }
-        return String.join("", out);
+        return String.join("", g);                   // ''.join(g)
     }
 }
