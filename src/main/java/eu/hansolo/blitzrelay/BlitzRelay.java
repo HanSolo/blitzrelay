@@ -73,6 +73,9 @@ public class BlitzRelay {
                 final AtomicBoolean closed = new AtomicBoolean(false);
 
                 final WebSocketClient ws = new WebSocketClient(URI.create(server)) {
+                    {
+                        setConnectionLostTimeout(30);
+                    }
 
                     @Override public void onOpen(final ServerHandshake handshake) {
                         LOGGER.info("WebSocket opened: {}", server);
@@ -80,8 +83,16 @@ public class BlitzRelay {
                     }
 
                     @Override public void onMessage(final String message) {
-                        // Text frame, pass String directly, same as Python websockets library
-                        handleMessage(message);
+                        // Java-WebSocket may decode some bytes as UTF-8 multi-byte sequences
+                        // producing code points above 255. Re-encode as bytes using the
+                        // raw char values to recover the original byte stream.
+                        final byte[] rawBytes = new byte[message.length()];
+                        for (int i = 0; i < message.length(); i++) {
+                            rawBytes[i] = (byte)(message.charAt(i) & 0xFF);
+                        }
+                        // Now decode back to String treating each byte as a Latin-1 char
+                        final String latin1 = new String(rawBytes, StandardCharsets.ISO_8859_1);
+                        handleMessage(latin1);
                     }
 
                     @Override public void onMessage(final ByteBuffer bytes) {
@@ -125,18 +136,9 @@ public class BlitzRelay {
 
     private static void handleMessage(final String raw) {
         if (raw == null || raw.isBlank()) { return; }
-
-        // Log first 20 char code points to diagnose encoding
-        if (LOGGER.isDebugEnabled()) {
-            final StringBuilder sb = new StringBuilder("String codepoints: ");
-            for (int i = 0; i < Math.min(20, raw.length()); i++) {
-                sb.append((int) raw.charAt(i)).append(" ");
-            }
-            LOGGER.debug(sb.toString());
-        }
-
         try {
             final String json = raw.trim().startsWith("{") ? raw.trim() : Helper.lzwDecode(raw).trim();
+            LOGGER.debug("Full decoded: {}", json);   // add this
             if (json.startsWith("{")) { processJson(json); }
         } catch (final Exception e) {
             LOGGER.debug("Decode error: {}", e.getMessage());
@@ -144,17 +146,8 @@ public class BlitzRelay {
     }
 
     private static void processJson(final String json) {
-        // Log decoded string as codepoints to see what we actually have
-        if (LOGGER.isDebugEnabled()) {
-            final StringBuilder sb = new StringBuilder("Decoded codepoints: ");
-            for (int i = 0; i < Math.min(30, json.length()); i++) {
-                sb.append((int) json.charAt(i)).append(" ");
-            }
-            LOGGER.debug(sb.toString());
-        }
-        if (json.contains("lat") && json.contains("lon") && json.contains("time")) {
-            publishStrike(json);
-        }
+        LOGGER.debug("Publishing: {}", json);
+        publishStrike(json);
     }
 
     private static void publishStrike(final String json) {
