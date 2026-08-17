@@ -11,6 +11,8 @@ services:
       - MQTT_HOST=host.docker.internal
       - MQTT_PORT=1883
       - MQTT_TOPIC=lightning/strikes
+    volumes:
+      - /var/log/blitzrelay:/docker_logs
     logging:
       driver: journald
       options:
